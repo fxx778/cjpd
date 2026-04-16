@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>我的拼豆图纸编辑器</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            font-family: system-ui, -apple-system, sans-serif;
+        }
+        body {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 16px;
+            background: #f8f9fa;
+        }
+        h1 {
+            text-align: center;
+            color: #2d3748;
+        }
+        .tip-box {
+            background: #fff3cd;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 16px;
+            color: #856404;
+        }
+        .section {
+            background: white;
+            padding: 16px;
+            border-radius: 12px;
+            margin-bottom: 16px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        label {
+            display: block;
+            margin: 12px 0 4px;
+            color: #4a5568;
+        }
+        input, select, button {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            font-size: 16px;
+        }
+        button {
+            margin-top: 12px;
+            background: #48bb78;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        button.secondary {
+            background: #718096;
+        }
+        .upload-area {
+            border: 2px dashed #cbd5e0;
+            border-radius: 8px;
+            padding: 40px 20px;
+            text-align: center;
+            margin-top: 16px;
+            color: #718096;
+        }
+        .canvas-container {
+            margin-top: 16px;
+            text-align: center;
+        }
+        #gridCanvas {
+            border: 1px solid #e2e8f0;
+            background: white;
+        }
+        .color-palette {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 8px;
+            margin-top: 16px;
+        }
+        .color-btn {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            border: 2px solid transparent;
+            cursor: pointer;
+        }
+        .color-btn.active {
+            border-color: #2d3748;
+            box-shadow: 0 0 0 2px #48bb78;
+        }
+        .stats {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 12px;
+        }
+        .stat-tag {
+            background: #e2e8f0;
+            padding: 4px 12px;
+            border-radius: 16px;
+            font-size: 14px;
+            color: #4a5568;
+        }
+        /* 新增：颜色统计表格样式 */
+        #colorStatsTable {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 12px;
+        }
+        #colorStatsTable th, #colorStatsTable td {
+            border: 1px solid #e2e8f0;
+            padding: 8px;
+            text-align: center;
+            font-size: 14px;
+        }
+        #colorStatsTable th {
+            background: #f8f9fa;
+        }
+        .color-preview {
+            width: 20px;
+            height: 20px;
+            border-radius: 3px;
+            display: inline-block;
+        }
+    </style>
+</head>
+<body>
+    <h1>拼豆图纸编辑器</h1>
+
+    <div class="tip-box">
+        💡 提示：电脑编辑体验更佳，取色和逐格调整更方便
+    </div>
+
+    <div class="section">
+        <label>宽度</label>
+        <input type="number" id="width" value="64" min="8" max="128">
+
+        <label>高度</label>
+        <input type="number" id="height" value="64" min="8" max="128">
+
+        <label>色板规格</label>
+        <select id="palette">
+            <option value="full">全色(291色)</option>
+            <option value="basic">基础色</option>
+        </select>
+
+        <label>描边敏感度</label>
+        <input type="number" id="edgeSensitivity" value="1" min="0" max="5" step="0.1">
+
+        <label>色号类型</label>
+        <select id="colorType">
+            <option value="coco">COCO</option>
+            <option value="mard">MARD</option>
+            <option value="hex">HEX</option>
+        </select>
+
+        <button onclick="generateGrid()">生成可编辑拼豆图</button>
+        <button class="secondary" onclick="downloadResult()">下载编辑结果</button>
+        <button class="secondary" onclick="clearGrid()">清空网格</button>
+
+        <div class="upload-area" id="uploadArea">
+            <p>点击上传图片<br>或将图片拖到这里</p>
+            <input type="file" id="imageUpload" accept="image/*" style="display: none;">
+        </div>
+    </div>
+
+    <div class="section">
+        <h3>编辑画布</h3>
+        <p style="color:#718096; font-size:14px;">先自动生成，再选择颜色逐格涂改。打开参考图时，原图会半透明叠在网格下方。</p>
+
+        <div style="display:flex; gap:16px; margin:12px 0;">
+            <label style="display:flex; align-items:center; gap:4px;">
+                <input type="checkbox" id="showRef" checked> 显示底图参考
+            </label>
+            <label style="display:flex; align-items:center; gap:4px;">
+                <input type="checkbox" id="showColorCode" checked> 显示色号
+            </label>
+        </div>
+
+        <div style="display:flex; gap:16px; align-items:center; margin:12px 0;">
+            <div>
+                <p style="margin:0; color:#4a5568;">当前颜色</p>
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <div id="currentColorBox" style="width:40px; height:40px; background:#faf4c8; border-radius:8px;"></div>
+                    <span id="currentColorText">COCO E02</span>
+                </div>
+            </div>
+            <div>
+                <label>画笔大小</label>
+                <select id="brushSize">
+                    <option value="1">1x1</option>
+                    <option value="2">2x2</option>
+                </select>
+            </div>
+            <button style="width:auto; background:#bee3f8; color:#2b6cb0; border:none; padding:8px 16px; border-radius:8px;" onclick="useEyedropper()">取色器</button>
+        </div>
+
+        <div class="canvas-container">
+            <canvas id="gridCanvas" width="512" height="512"></canvas>
+        </div>
+
+        <div class="stats">
+            <span class="stat-tag">规格：未生成</span>
+            <span class="stat-tag">已填充：0格</span>
+            <span class="stat-tag">编码：COCO</span>
+            <span class="stat-tag">画笔：1x1</span>
+            <span class="stat-tag">描边敏感度：1.0</span>
+            <span class="stat-tag">色号：已开启</span>
+            <span class="stat-tag">色板：全色(291色)</span>
+        </div>
+    </div>
+
+    <div class="section">
+        <h3>颜色选择</h3>
+        <div class="color-palette" id="colorPalette"></div>
+    </div>
+
+    <div class="section">
+        <h3>参考原图</h3>
+        <div id="refPreview" style="border:1px solid #e2e8f0; border-radius:8px; padding:20px; text-align:center; color:#718096;">
+            请先上传图片
+        </div>
+    </div>
+
+    <div class="section">
+        <h3>效果预览</h3>
+        <div id="resultPreview" style="border:1px solid #e2e8f0; border-radius:8px; padding:20px; text-align:center; color:#718096;">
+            生成后在这里查看效果图
+        </div>
+    </div>
+
+    <!-- 新增：颜色统计模块 -->
+    <div class="section">
+        <h3>颜色统计</h3>
+        <p style="color:#718096; font-size:14px;" id="statsTip">当前共使用 0 颗拼豆，按 MARD 编码显示。</p>
+        <table id="colorStatsTable">
+            <thead>
+                <tr>
+                    <th>颜色</th>
+                    <th>MARD</th>
+                    <th>COCO</th>
+                    <th>HEX</th>
+                    <th>数量</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td colspan="5" style="color:#718096;">还没有任何已填充的格子</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gridCanvas');
+        const ctx = canvas.getContext('2d');
+        let gridWidth = 64;
+        let gridHeight = 64;
+        let cellSize = 8;
+        let grid = [];
+        let selectedColor = '#faf4c8';
+        let selectedColorCode = 'COCO E02';
+
+        // 颜色对应表（和你截图里的一致）
+        const colorMap = {
+            "#000000": { mard: "H07", coco: "B09", hex: "#000000" },
+            "#1D1414": { mard: "H16", coco: "B08", hex: "#1D1414" },
+            "#5A2121": { mard: "F11", coco: "Z23", hex: "#5A2121" },
+            "#FFFFFF": { mard: "T01", coco: "L14", hex: "#FFFFFF" },
+            "#FCFBFF": { mard: "H01", coco: "A02", hex: "#FCFBFF" },
+            "#2F2B2F": { mard: "H06", coco: "B07", hex: "#2F2B2F" },
+            "#943630": { mard: "F06", coco: "Z21", hex: "#943630" },
+            "#faf4c8": { mard: "T02", coco: "E02", hex: "#faf4c8" },
+            "#fff6cc": { mard: "T03", coco: "E01", hex: "#fff6cc" },
+            "#fff176": { mard: "T04", coco: "E05", hex: "#fff176" },
+            "#ffeb3b": { mard: "Y01", coco: "E07", hex: "#ffeb3b" },
+            "#ffd54f": { mard: "Y02", coco: "D03", hex: "#ffd54f" },
+            "#ffab91": { mard: "O01", coco: "D05", hex: "#ffab91" },
+            "#ff8a65": { mard: "O02", coco: "D08", hex: "#ff8a65" },
+            "#ff7043": { mard: "O03", coco: "D06", hex: "#ff7043" },
+            "#ff5722": { mard: "O04", coco: "D07", hex: "#ff5722" },
+            "#ffe0b2": { mard: "T05", coco: "D01", hex: "#ffe0b2" },
+            "#ffcc80": { mard: "O05", coco: "D04", hex: "#ffcc80" },
+            "#f44336": { mard: "R01", coco: "C05", hex: "#f44336" },
+            "#fff59d": { mard: "Y03", coco: "E03", hex: "#fff59d" },
+            "#ffb74d": { mard: "O06", coco: "D02", hex: "#ffb74d" }
+        };
+
+        // 初始化颜色面板
+        const paletteColors = [
+            { color: '#000000', code: 'H07' },
+            { color: '#1D1414', code: 'H16' },
+            { color: '#5A2121', code: 'F11' },
+            { color: '#FFFFFF', code: 'T01' },
+            { color: '#FCFBFF', code: 'H01' },
+            { color: '#2F2B2F', code: 'H06' },
+            { color: '#943630', code: 'F06' },
+            { color: '#faf4c8', code: 'E02' },
+            { color: '#fff6cc', code: 'E01' },
+            { color: '#fff176', code: 'E05' },
+            { color: '#ffeb3b', code: 'E07' },
+            { color: '#ffd54f', code: 'D03' },
+            { color: '#ffab91', code: 'D05' },
+            { color: '#ff8a65', code: 'D08' },
+            { color: '#ff7043', code: 'D06' },
+            { color: '#ff5722', code: 'D07' },
+            { color: '#ffe0b2', code: 'D01' },
+            { color: '#ffcc80', code: 'D04' },
+            { color: '#f44336', code: 'C05' },
+            { color: '#fff59d', code: 'E03' },
+            { color: '#ffb74d', code: 'D02' }
+        ];
+
+        // 渲染颜色面板
+        function renderPalette() {
+            const paletteDiv = document.getElementById('colorPalette');
+            paletteDiv.innerHTML = '';
+            paletteColors.forEach(item => {
+                const btn = document.createElement('button');
+                btn.className = 'color-btn';
+                btn.style.background = item.color;
+                const colorInfo = colorMap[item.color];
+                btn.title = `MARD ${colorInfo?.mard || item.code}`;
+                btn.onclick = () => selectColor(item.color, colorInfo);
+                if (item.color === selectedColor) btn.classList.add('active');
+                paletteDiv.appendChild(btn);
+            });
+        }
+
+        function selectColor(color, colorInfo) {
+            selectedColor = color;
+            selectedColorCode = `COCO ${colorInfo?.coco || '---'}`;
+            document.getElementById('currentColorBox').style.background = color;
+            document.getElementById('currentColorText').textContent = selectedColorCode;
+            renderPalette();
+        }
+
+        // 初始化上传区域
+        document.getElementById('uploadArea').addEventListener('click', () => {
+            document.getElementById('imageUpload').click();
+        });
+
+        document.getElementById('imageUpload').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    document.getElementById('refPreview').innerHTML = `<img src="${event.target.result}" style="max-width:100%; max-height:200px;">`;
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        // 初始化网格
+        function initGrid() {
+            gridWidth = parseInt(document.getElementById('width').value);
+            gridHeight = parseInt(document.getElementById('height').value);
+            cellSize = Math.floor(canvas.width / gridWidth);
+            grid = Array(gridHeight).fill().map(() => Array(gridWidth).fill(null));
+            drawGrid();
+            updateColorStats();
+        }
+
+        // 绘制网格
+        function drawGrid() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.strokeStyle = '#e2e8f0';
+            ctx.lineWidth = 0.5;
+            for (let y = 0; y < gridHeight; y++) {
+                for (let x = 0; x < gridWidth; x++) {
+                    ctx.fillStyle = grid[y][x] || '#ffffff';
+                    ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
+                    ctx.strokeRect(x * cellSize, y * cellSize, cellSize, cellSize);
+                }
+            }
+        }
+
+        // 更新颜色统计
+        function updateColorStats() {
+            const colorCount = {};
+            let total = 0;
+
+            // 统计每种颜色的数量
+            for (let y = 0; y < gridHeight; y++) {
+                for (let x = 0; x < gridWidth; x++) {
+                    const color = grid[y][x];
+                    if (color) {
+                        colorCount[color] = (colorCount[color] || 0) + 1;
+                        total++;
+                    }
+                }
+            }
+
+            // 更新提示文字
+            document.getElementById('statsTip').textContent = `当前共使用 ${total} 颗拼豆，按 MARD 编码显示。`;
+
+            // 更新表格
+            const tbody = document.querySelector('#colorStatsTable tbody');
+            tbody.innerHTML = '';
+
+            if (Object.keys(colorCount).length === 0) {
+                tbody.innerHTML = `<tr><td colspan="5" style="color:#718096;">还没有任何已填充的格子</td></tr>`;
+                return;
+            }
+
+            // 按数量从多到少排序
+            const sortedColors = Object.entries(colorCount).sort((a, b) => b[1] - a[1]);
+
+            sortedColors.forEach(([color, count]) => {
+                const info = colorMap[color] || { mard: "---", coco: "---", hex: color };
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td><span class="color-preview" style="background:${color};"></span></td>
+                    <td>${info.mard}</td>
+                    <td>${info.coco}</td>
+                    <td>${info.hex}</td>
+                    <td>${count}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        // 生成拼豆图（简化版，实际可扩展图片处理）
+        function generateGrid() {
+            initGrid();
+            document.getElementById('resultPreview').innerHTML = '已生成拼豆图！';
+        }
+
+        // 清空网格
+        function clearGrid() {
+            initGrid();
+            document.getElementById('resultPreview').innerHTML = '生成后在这里查看效果图';
+        }
+
+        // 下载结果（简化版）
+        function downloadResult() {
+            alert('下载功能已触发，实际使用时可添加Canvas转图片下载逻辑');
+        }
+
+        // 取色器（简化版）
+        function useEyedropper() {
+            alert('取色器功能：点击画布即可吸取对应格子的颜色');
+        }
+
+        // 画布点击事件（修改后会自动更新统计）
+        canvas.addEventListener('click', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const x = Math.floor((e.clientX - rect.left) / cellSize);
+            const y = Math.floor((e.clientY - rect.top) / cellSize);
+            if (x >= 0 && x < gridWidth && y >= 0 && y < gridHeight) {
+                grid[y][x] = selectedColor;
+                drawGrid();
+                updateColorStats(); // 每次修改后更新统计
+            }
+        });
+
+        // 初始化
+        renderPalette();
+        initGrid();
+    </script>
+</body>
+</html>
